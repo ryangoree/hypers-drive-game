@@ -3,17 +3,19 @@ import { PatchedBodyCompOpt } from "./@types";
 import { GameStorage } from "./GameStorage";
 import { commify, randNum, scale } from "./utils";
 import { Settings } from "./settings";
-import { Stats } from "./objects/Stats";
+import { Stat, Stats } from "./objects/Stats";
 import { Events } from "./Events";
 import { EventFeed } from "./objects/EventFeed";
 import { Trades } from "./objects/Trades";
 import { AudioManager } from "./AudioManager";
+import { StarGenerator, Stars } from "./objects/Stars";
 
 /**
  * Add default settings to a partial settings object
  */
 function initSettings(settings?: Partial<Settings>): Settings {
   return {
+    MODE: "hyperdrive",
     GRAVITY: 1750,
     JUMP_FORCE: 550,
     FALLING_VELOCITY: 600,
@@ -44,57 +46,16 @@ export const Z = {
 const SPEED_OF_LIGHT = 186_000; // mi/s
 const WARP_SPEED = SPEED_OF_LIGHT * 2;
 
-const fullWidth = 960;
-const fullHeight = 600;
-
 export function startGame(gameSettings?: Partial<Settings>) {
   const canvas = document.getElementById("game-canvas") as HTMLCanvasElement;
 
-  // Manage touch scrolling on the canvas
-  let startTouchY: number | undefined;
-  canvas.addEventListener("touchmove", ({ touches }) => {
-    // don't scroll if using more than one finger (maybe they're trying to zoom)
-    if (touches.length !== 1) {
-      return;
-    }
-
-    const touchY = touches[0].clientY;
-
-    if (!startTouchY) {
-      startTouchY = touchY;
-      return;
-    }
-
-    window.scrollBy(0, (startTouchY - touchY) * 1.8);
-    startTouchY = undefined;
-  });
-  canvas.addEventListener("touchend", () => {
-    startTouchY = undefined;
-  });
-
-  canvas.addEventListener("wheel", ({ deltaY }) => {
-    window.scrollBy(0, deltaY);
-  });
-
   // Create kaboom instance
   const k = kaboom({
-    width: 960,
-    height: 600,
     background: [20, 22, 30],
     // play music outside of focus
     backgroundAudio: true,
     canvas,
   });
-
-  const sizeScale = canvas.parentElement.clientWidth / fullWidth;
-  const newWidth = fullWidth * sizeScale;
-  const newHeight = fullHeight * sizeScale;
-
-  canvas.style.scale = sizeScale.toString();
-  canvas.style.marginLeft = `${-(fullWidth / 2 - newWidth / 2)}px`;
-  canvas.style.marginRight = `${-(fullWidth / 2 - newWidth / 2)}px`;
-  canvas.style.marginTop = `${-(fullHeight / 2 - newHeight / 2)}px`;
-  canvas.style.marginBottom = `${-(fullHeight / 2 - newHeight / 2)}px`;
 
   // Calculate once and reuse
   const gameWidth = k.width();
@@ -102,17 +63,7 @@ export function startGame(gameSettings?: Partial<Settings>) {
 
   // Add defaults to settings
   const settings = initSettings(gameSettings);
-  const {
-    GRAVITY,
-    JUMP_FORCE,
-    FALLING_VELOCITY,
-    SPEED,
-    FINAL_SPEED,
-    TIME_TO_HYPERDRIVE,
-    DEVIATION,
-    DEVIATION_COOLDOWN,
-    TIC_RATE,
-  } = settings;
+  const initialSettings = { ...settings };
 
   // Initiate helper classes
   const storage = new GameStorage();
@@ -152,6 +103,8 @@ export function startGame(gameSettings?: Partial<Settings>) {
   });
   k.loadSprite("bird", "/bird.png");
   k.loadSprite("ryanGosling", "/ryan_gosling_drive_movie_ascii_art.png");
+  k.loadSprite("right-arrow", "/right-arrow.png");
+  k.loadSprite("left-arrow", "/left-arrow.png");
 
   // Add volume controls
   const volumeContainer = k.add([
@@ -206,41 +159,13 @@ export function startGame(gameSettings?: Partial<Settings>) {
   //////////////////////////////////////////////////////////////////////////////
   // START
   //////////////////////////////////////////////////////////////////////////////
-
   k.scene("start", () => {
     // Generate random stars
-    for (let i = 0; i < 100; i++) {
-      const star = k.add([
-        "star",
-        k.circle(randNum(1, 2)),
-        k.pos(randNum(0, gameWidth), randNum(0, gameHeight)),
-        k.anchor("left"),
-        k.color(255, 255, 255),
-        k.opacity(randNum(2, 6) / 10),
-        k.offscreen({ destroy: true }),
-        k.z(Z.stars),
-        k.stay(),
-      ]);
-      star.onUpdate(() => {
-        // glitchy star effect
-        star.pos.x -= randNum(0.2, 1);
-      });
-    }
-    k.loop(0.5, () => {
-      const star = k.add([
-        "star",
-        k.circle(randNum(1, 2)),
-        k.pos(gameWidth, randNum(0, gameHeight)),
-        k.anchor("left"),
-        k.color(255, 255, 255),
-        k.opacity(randNum(2, 6) / 10),
-        k.offscreen({ destroy: true }),
-        k.z(Z.stars),
-        k.stay(),
-      ]);
-      star.onUpdate(() => {
-        star.pos.x -= randNum(0.2, 1);
-      });
+    Stars(k, {
+      z: Z.stars,
+    });
+    StarGenerator(k, {
+      z: Z.stars,
     });
 
     const title = k.add([
@@ -261,16 +186,31 @@ export function startGame(gameSettings?: Partial<Settings>) {
       k.anchor("center"),
     ]);
 
-    const instructions = subTitle.add([
-      k.text("Press SPACE or touch to start the game...", {
-        font: "M23",
-        size: 24,
+    const playBtn = subTitle.add([
+      k.pos(0, 80),
+      k.anchor("center"),
+      k.rect(200, 40, {
+        radius: 8,
       }),
-      k.pos(0, 120),
+      k.color(255, 255, 255),
+      k.area(),
+    ]);
+    playBtn.add([
+      k.text("Play", {
+        font: "M23",
+        size: 20,
+      }),
+      k.color(0, 0, 0),
+      k.pos(0, 0),
       k.anchor("center"),
     ]);
-
-    instructions.add([
+    playBtn.onHover(() => {
+      k.setCursor("pointer");
+    });
+    playBtn.onHoverEnd(() => {
+      k.setCursor("default");
+    });
+    playBtn.add([
       k.sprite("ryanGosling"),
       k.scale(0.2, 0.2),
       k.pos(0, 150),
@@ -281,12 +221,60 @@ export function startGame(gameSettings?: Partial<Settings>) {
         isStatic: true,
       } as PatchedBodyCompOpt),
     ]);
+    playBtn.onClick(() => {
+      k.setCursor("default");
+      k.go("settings");
+    });
 
     audioManger.play("StartMusic", {
       loop: true,
     });
+  });
 
-    const transitionEventHandler = () => {
+  //////////////////////////////////////////////////////////////////////////////
+  // GAME SETTINGS
+  //////////////////////////////////////////////////////////////////////////////
+  k.scene("settings", () => {
+    StarGenerator(k, {
+      z: Z.stars,
+    });
+
+    const container = k.add([k.pos(gameWidth / 2, 100), k.anchor("center")]);
+    container.add([
+      k.text("Game Settings", {
+        font: "M23",
+        size: 18,
+      }),
+      k.pos(0, 0),
+      k.anchor("center"),
+      k.color(255, 255, 255),
+    ]);
+
+    const startBtn = container.add([
+      k.rect(100, 40, {
+        radius: 8,
+      }),
+      k.anchor("center"),
+      k.pos(0, 60),
+      k.color(255, 255, 255),
+      k.area(),
+    ]);
+    startBtn.add([
+      k.text("Start", {
+        font: "M23",
+        size: 20,
+      }),
+      k.color(0, 0, 0),
+      k.pos(0, 0),
+      k.anchor("center"),
+    ]);
+    startBtn.onHover(() => {
+      k.setCursor("pointer");
+    });
+    startBtn.onHoverEnd(() => {
+      k.setCursor("default");
+    });
+    startBtn.onClick(() => {
       k.get("star").forEach((star) => {
         star.onUpdate(() => {
           star.pos.x -= randNum(1, settings.SPEED * 1.5);
@@ -294,11 +282,149 @@ export function startGame(gameSettings?: Partial<Settings>) {
       });
       audioManger.stop("StartMusic");
       k.go("game");
-    };
+    });
 
-    // Event callback handlers
-    k.onKeyPress("space", transitionEventHandler);
-    k.onTouchStart(transitionEventHandler);
+    const leftCol = container.add([
+      k.pos(-160, 100),
+      k.anchor("left"),
+      k.rect(0, gameHeight / 10),
+    ]);
+    const rightCol = container.add([
+      k.pos(160, 100),
+      k.anchor("right"),
+      k.rect(0, gameHeight / 10),
+    ]);
+
+    const gameModeStates: Record<Settings["MODE"], Settings["MODE"]> = {
+      hyperdrive: "flappy",
+      flappy: "hyperdrive",
+    };
+    leftCol.add([
+      k.text("GAME MODE", {
+        size: 16,
+      }),
+      k.pos(0, 7),
+      k.anchor("topleft"),
+    ]);
+    const modeInput = rightCol.add([
+      k.text("hyperdrive", {
+        size: 16,
+      }),
+      k.pos(-15, 7),
+      k.anchor("topright"),
+      k.opacity(0.8),
+      k.area(),
+    ]);
+    const leftArrow = modeInput.add([
+      k.pos(-modeInput.width - 27, -2),
+      k.sprite("left-arrow"),
+      k.opacity(0.8),
+      k.area(),
+      "settings-arrow",
+    ]);
+    leftArrow.onHover(() => {
+      leftArrow.opacity = 1;
+      k.setCursor("pointer");
+    });
+    leftArrow.onHoverEnd(() => {
+      leftArrow.opacity = 0.8;
+      k.setCursor("default");
+    });
+    leftArrow.onClick(() => {
+      const newMode = gameModeStates[settings.MODE];
+      settings.MODE = newMode;
+      modeInput.text = newMode;
+      requestAnimationFrame(() => {
+        leftArrow.pos.x = -modeInput.width - 27;
+      });
+    });
+    const rightArrow = modeInput.add([
+      k.pos(15, -2),
+      k.sprite("right-arrow"),
+      k.opacity(0.8),
+      k.area(),
+      "settings-arrow",
+    ]);
+    rightArrow.onHover(() => {
+      rightArrow.opacity = 1;
+      k.setCursor("pointer");
+    });
+    rightArrow.onHoverEnd(() => {
+      rightArrow.opacity = 0.8;
+      k.setCursor("default");
+    });
+    rightArrow.onClick(() => {
+      const newMode = gameModeStates[settings.MODE];
+      settings.MODE = newMode;
+      initialSettings.MODE = newMode;
+      modeInput.text = newMode;
+      requestAnimationFrame(() => {
+        leftArrow.pos.x = -modeInput.width - 27;
+      });
+    });
+
+    let activeInput;
+    Object.entries(settings).forEach(([setting, value], i) => {
+      if (typeof value === "number") {
+        leftCol.add([
+          k.text(setting.replace(/_/g, " "), {
+            size: 16,
+          }),
+          k.pos(0, 40 * i + 7),
+          k.anchor("topleft"),
+        ]);
+        const input = rightCol.add([
+          k.rect(60, 30, {
+            radius: 4,
+          }),
+          k.pos(0, 40 * i),
+          k.anchor("topright"),
+          k.color(255, 255, 255),
+          k.opacity(0.8),
+          k.area(),
+        ]);
+        const inputValue = input.add([
+          k.text(value.toString(), {
+            size: 16,
+          }),
+          k.color(0, 0, 0),
+          k.pos(-10, 7),
+          k.anchor("topright"),
+        ]);
+        input.onHover(() => {
+          k.setCursor("pointer");
+        });
+        input.onHoverEnd(() => {
+          k.setCursor("default");
+        });
+        input.onClick(() => {
+          if (activeInput) {
+            activeInput.opacity = 0.8;
+          }
+          activeInput = input;
+          input.opacity = 1;
+        });
+        k.onCharInput((ch) => {
+          if (activeInput === input) {
+            const newValue = inputValue.text + ch;
+            inputValue.text = newValue;
+            settings[setting] = parseFloat(newValue);
+            initialSettings[setting] = parseFloat(newValue);
+          }
+        });
+        k.onKeyPressRepeat("backspace", () => {
+          if (activeInput === input) {
+            inputValue.text = inputValue.text.slice(0, -1);
+          }
+        });
+        k.onKeyPress("enter", () => {
+          input.opacity = 0.8;
+        });
+        k.onKeyPress("escape", () => {
+          input.opacity = 0.8;
+        });
+      }
+    });
   });
 
   //////////////////////////////////////////////////////////////////////////////
@@ -315,7 +441,7 @@ export function startGame(gameSettings?: Partial<Settings>) {
     });
 
     // Establish gravity
-    k.setGravity(GRAVITY);
+    k.setGravity(settings.GRAVITY);
 
     // Reset and add the event feed
     eventFeed.clear();
@@ -390,7 +516,7 @@ export function startGame(gameSettings?: Partial<Settings>) {
       k.area(),
       k.body({
         // @ts-ignore
-        maxVel: FALLING_VELOCITY,
+        maxVel: settings.FALLING_VELOCITY,
       }),
       k.z(Z.player),
     ]);
@@ -404,29 +530,26 @@ export function startGame(gameSettings?: Partial<Settings>) {
     // Establish a speed the player will reach before engaging hyperdrive.
     const finalPlayerSpeed = 2_777; // mph
 
+    const statEntries: Stat<string>[] = [
+      ["LIQUIDITY", storage.liquidity],
+      ["LONGS", storage.longsVolume],
+      ["SHORTS", storage.shortsVolume],
+      ["VOLUME", storage.totalVolume],
+      ["SCORE", storage.score],
+    ];
+
     // Add a list of stats
-    const stats = new Stats(
-      k,
-      [
-        ["LIQUIDITY", storage.liquidity],
-        ["LONGS", storage.longsVolume],
-        ["SHORTS", storage.shortsVolume],
-        ["VOLUME", storage.totalVolume],
-        ["SCORE", storage.score],
-        ["SPEED", commify(basePlayerSpeed)],
-      ],
-      {
-        x: 20,
-        y: 20,
-      }
-    );
+    const stats = new Stats(k, statEntries, {
+      x: 20,
+      y: 20,
+    });
 
     let accelerateTween: TweenController;
 
     // Jump control which increases the score and shows a "+fees" message.
     const onJumpHandler = () => {
       // Make the player jump upward
-      player.jump(JUMP_FORCE);
+      player.jump(settings.JUMP_FORCE);
 
       // Tween the angle of the car
       accelerateTween?.cancel();
@@ -479,16 +602,11 @@ export function startGame(gameSettings?: Partial<Settings>) {
     const jumpControl = k.onKeyPress("space", onJumpHandler);
     const jumpControlTouch = k.onTouchStart(onJumpHandler);
 
-    // Update the speed every 200 ms.
-    k.loop(0.2, () => {
-      stats.update("SPEED", formatSpeed(currentPlayerSpeed));
-    });
-
     // Track the number of ticks without a trade event.
-    let noTradeTickCountdown = DEVIATION_COOLDOWN;
+    let noTradeTickCountdown = settings.DEVIATION_COOLDOWN;
 
     // Event loop
-    const eventController = k.loop(TIC_RATE, () => {
+    const eventController = k.loop(settings.TIC_RATE, () => {
       const event = events.generateGameEvent();
       const eventAmount = randNum(100, storage.liquidity);
 
@@ -508,14 +626,14 @@ export function startGame(gameSettings?: Partial<Settings>) {
           trades.add(
             eventAmount,
             type,
-            noTradeTickCountdown ? DEVIATION : undefined
+            noTradeTickCountdown ? settings.DEVIATION : undefined
           );
           eventFeed.add(
             `${type === "LONG" ? "Long" : "Short"} added: ${eventAmount}`
           );
 
           // reset the deviation cooldown
-          noTradeTickCountdown = DEVIATION_COOLDOWN;
+          noTradeTickCountdown = settings.DEVIATION_COOLDOWN;
           return;
 
         case "ADD_LIQUIDITY":
@@ -533,92 +651,8 @@ export function startGame(gameSettings?: Partial<Settings>) {
       }
     });
 
-    // Prep variables for tweening.
-    const finalPlayerX = gameWidth + 100;
-    let speedTween: TweenController;
-    let speedStatTween: TweenController;
-    let playerSpeedTween: TweenController;
-    let currentPlayerSpeed = basePlayerSpeed;
-
-    let isTweening = false;
-
-    // Tween speeds
-    function startTweening() {
-      if (isTweening) {
-        return;
-      }
-      isTweening = true;
-
-      // Derive the duration of the tween from the distance between the player's
-      // current and final position. The closer the player is to the final
-      // position, the less time it takes to speed up.
-      const duration = scale(
-        player.pos.x,
-        startingPlayerX,
-        finalPlayerX,
-        TIME_TO_HYPERDRIVE,
-        0
-      );
-
-      // Tween the SPEED setting to affect the movement of background objects.
-      speedTween = k.tween(
-        SPEED,
-        FINAL_SPEED,
-        duration,
-        (speed) => {
-          settings.SPEED = speed;
-        },
-        k.easings.easeInCubic
-      );
-
-      // Tween the speed stat.
-      speedStatTween = k.tween(
-        basePlayerSpeed,
-        finalPlayerSpeed,
-        duration,
-        (speed) => {
-          currentPlayerSpeed = speed;
-          storage.topSpeed = Math.max(speed, storage.topSpeed);
-        },
-        k.easings.easeInCubic
-      );
-
-      // Tween the player speed to affect the player's movement.
-      playerSpeedTween = k.tween(
-        player.pos.x,
-        finalPlayerX,
-        duration,
-        (x) => {
-          player.pos.x = x;
-        },
-        k.easings.easeInCubic
-      );
-      // });
-    }
-
-    // Start tweening immediately
-    startTweening();
-
     // keep track of when blastoff starts
     let isBlastingOff = false;
-
-    // Stop tweening when the player hits a bar.
-    player.onCollide("bar", () => {
-      if (isBlastingOff) {
-        return;
-      }
-      playerSpeedTween.cancel();
-      speedStatTween.cancel();
-      speedTween.cancel();
-      isTweening = false;
-      settings.SPEED = SPEED;
-      stats.update("SPEED", formatSpeed(basePlayerSpeed));
-    });
-
-    // Start tweening again after the player clears the bar.
-    player.onCollideEnd("bar", () => {
-      startTweening();
-    });
 
     // End the game when the player hits an obstacle.
     player.onCollide("obstacle", () => {
@@ -630,189 +664,295 @@ export function startGame(gameSettings?: Partial<Settings>) {
       k.go("gameover");
     });
 
-    // Engage hyperdrive when the player hits the blastoff point.
-    player.onCollide("blastoff", () => {
-      isBlastingOff = true;
-
-      audioManger.play("HyperdriveSound");
-
-      // Stop tweening
-      speedTween.cancel();
-      playerSpeedTween.cancel();
-      speedStatTween.cancel();
-
-      // Stop the event loop
-      eventController.cancel();
-
-      // Destroy the blastoff point to allow the player to pass it.
-      blastoff.destroy();
-
-      // Turn off the jump control.
-      jumpControl.cancel();
-      jumpControlTouch.cancel();
-
-      // Remove gravity to keep the player from falling.
-      k.setGravity(0);
-
-      // Set the top speed to FTL for hyperspace.
-      storage.topSpeed = WARP_SPEED;
-      // stats.update("SPEED", `${formatSpeed(WARP_SPEED)}!!!`);
-      currentPlayerSpeed = WARP_SPEED;
-
-      let warpLineBaseSpeed = 5;
-      let warpLineBaseWidth = 1;
-      let warpLineHeight = 10;
-      let warpLineBaseOpacity = 2;
-
-      // Add blocky lines when hyperdrive is engaging.
-      k.loop(0.01, () => {
-        const warpLine = k.add([
-          "warpLine",
-          k.rect(
-            randNum(warpLineBaseWidth, warpLineBaseWidth * 5),
-            warpLineHeight
-          ),
-          k.pos(gameWidth + 100, randNum(0, gameHeight)),
-          k.anchor("left"),
-          k.color(255, 255, 255),
-          k.opacity(randNum(warpLineBaseOpacity, warpLineBaseOpacity * 3) / 10),
-          k.offscreen({ destroy: true }),
-          k.z(Z.stars),
-        ]);
-        warpLine.onUpdate(() => {
-          warpLine.pos.x -= randNum(warpLineBaseSpeed, warpLineBaseSpeed * 2);
+    switch (settings.MODE) {
+      case "flappy":
+        player.pos.x = gameWidth / 4;
+        player.onCollide("bar", () => {
+          audioManger.stop("GameBackgroundMusic");
+          k.go("gameover");
         });
-      });
+        break;
+      case "hyperdrive":
+        statEntries.push(["SPEED", commify(basePlayerSpeed)]);
 
-      // Tween the SPEED setting to make background objects speed up.
-      k.tween(
-        settings.SPEED,
-        settings.SPEED * 10,
-        1,
-        (speed) => {
-          settings.SPEED = speed;
-        },
-        k.easings.easeInCubic
-      );
+        // Prep variables for tweening.
+        const finalPlayerX = gameWidth + 100;
+        let speedTween: TweenController;
+        let speedStatTween: TweenController;
+        let playerSpeedTween: TweenController;
+        let currentPlayerSpeed = basePlayerSpeed;
 
-      // Move the player back on the canvas to prepare for blast off.
-      k.tween(
-        player.pos.x,
-        gameWidth / 5,
-        3,
-        (x) => (player.pos.x = x),
-        k.easings.easeInOutCubic
-      );
+        let isTweening = false;
 
-      k.wait(2, () => {
-        // Speed the warp lines up
-        k.tween(
-          warpLineBaseSpeed,
-          warpLineBaseSpeed * 5,
-          2,
-          (speed) => {
-            warpLineBaseSpeed = speed;
-          },
-          k.easings.easeInCirc
-        );
+        // Update the speed every 200 ms.
+        k.loop(0.2, () => {
+          stats.update("SPEED", formatSpeed(currentPlayerSpeed));
+        });
 
-        // Shrink the warp line heights
-        k.tween(
-          warpLineHeight,
-          2,
-          3,
-          (height) => {
-            warpLineHeight = height;
-          },
-          k.easings.easeInCirc
-        );
+        // Tween speeds
+        function startTweening() {
+          if (isTweening) {
+            return;
+          }
+          isTweening = true;
 
-        // Stretch the warp lines
-        k.tween(
-          warpLineBaseWidth,
-          warpLineBaseWidth * 15,
-          2,
-          (width) => {
-            warpLineBaseWidth = width;
-          },
-          k.easings.easeInCirc
-        );
-      });
+          // Derive the duration of the tween from the distance between the player's
+          // current and final position. The closer the player is to the final
+          // position, the less time it takes to speed up.
+          const duration = scale(
+            player.pos.x,
+            startingPlayerX,
+            finalPlayerX,
+            settings.TIME_TO_HYPERDRIVE,
+            0
+          );
 
-      // HYPERSPACE
-      k.wait(4.1, () => {
-        // Propel the player forward
-        k.tween(
-          player.pos.x,
-          finalPlayerX + 1000,
-          0.1,
-          (x) => (player.pos.x = x),
-          k.easings.easeInCubic
-        );
+          // Tween the SPEED setting to affect the movement of background objects.
+          speedTween = k.tween(
+            initialSettings.SPEED,
+            settings.FINAL_SPEED,
+            duration,
+            (speed) => {
+              settings.SPEED = speed;
+            },
+            k.easings.easeInCubic
+          );
 
-        // Angle the player back
-        k.tween(
-          0,
-          -15,
-          0.1,
-          (angle) => {
-            // @ts-ignore
-            player.angle = angle;
-          },
-          k.easings.easeOutCubic
-        );
+          // Tween the speed stat.
+          speedStatTween = k.tween(
+            basePlayerSpeed,
+            finalPlayerSpeed,
+            duration,
+            (speed) => {
+              currentPlayerSpeed = speed;
+              storage.topSpeed = Math.max(speed, storage.topSpeed);
+            },
+            k.easings.easeInCubic
+          );
 
-        // Speed the warp lines up even more!
-        k.tween(
-          warpLineBaseSpeed,
-          warpLineBaseSpeed * 10,
-          0.1,
-          (speed) => {
-            warpLineBaseSpeed = speed;
-          },
-          k.easings.easeInCubic
-        );
+          // Tween the player speed to affect the player's movement.
+          playerSpeedTween = k.tween(
+            player.pos.x,
+            finalPlayerX,
+            duration,
+            (x) => {
+              player.pos.x = x;
+            },
+            k.easings.easeInCubic
+          );
+          // });
+        }
 
-        // Shrink the warp line heights even more!
-        k.tween(
-          warpLineHeight,
-          1,
-          0.1,
-          (height) => {
-            warpLineHeight = height;
-          },
-          k.easings.easeInCubic
-        );
+        // Start tweening immediately
+        startTweening();
 
-        // Stretch the warp lines even more!
-        k.tween(
-          warpLineBaseWidth,
-          warpLineBaseWidth * 2,
-          0.1,
-          (width) => {
-            warpLineBaseWidth = width;
-          },
-          k.easings.easeInCubic
-        );
+        // Stop tweening when the player hits a bar.
+        player.onCollide("bar", () => {
+          if (isBlastingOff) {
+            return;
+          }
+          playerSpeedTween.cancel();
+          speedStatTween.cancel();
+          speedTween.cancel();
+          isTweening = false;
+          settings.SPEED = initialSettings.SPEED;
+          stats.update("SPEED", formatSpeed(basePlayerSpeed));
+        });
 
-        // Fade the blocks out
-        k.tween(
-          warpLineBaseOpacity,
-          0,
-          4,
-          (opacity) => {
-            warpLineBaseOpacity = opacity;
-          },
-          k.easings.easeInQuad
-        );
-      });
+        // Start tweening again after the player clears the bar.
+        player.onCollideEnd("bar", () => {
+          startTweening();
+        });
 
-      // End the game
-      k.wait(9, () => {
-        audioManger.stop("GameBackgroundMusic");
-        k.go("goodEnding");
-      });
-    });
+        // Engage hyperdrive when the player hits the blastoff point.
+        player.onCollide("blastoff", () => {
+          isBlastingOff = true;
+
+          audioManger.play("HyperdriveSound");
+
+          // Stop tweening
+          speedTween.cancel();
+          playerSpeedTween.cancel();
+          speedStatTween.cancel();
+
+          // Stop the event loop
+          eventController.cancel();
+
+          // Destroy the blastoff point to allow the player to pass it.
+          blastoff.destroy();
+
+          // Turn off the jump control.
+          jumpControl.cancel();
+          jumpControlTouch.cancel();
+
+          // Remove gravity to keep the player from falling.
+          k.setGravity(0);
+
+          // Set the top speed to FTL for hyperspace.
+          storage.topSpeed = WARP_SPEED;
+          // stats.update("SPEED", `${formatSpeed(WARP_SPEED)}!!!`);
+          currentPlayerSpeed = WARP_SPEED;
+
+          let warpLineBaseSpeed = 5;
+          let warpLineBaseWidth = 1;
+          let warpLineHeight = 10;
+          let warpLineBaseOpacity = 2;
+
+          // Add blocky lines when hyperdrive is engaging.
+          k.loop(0.01, () => {
+            const warpLine = k.add([
+              "warpLine",
+              k.rect(
+                randNum(warpLineBaseWidth, warpLineBaseWidth * 5),
+                warpLineHeight
+              ),
+              k.pos(gameWidth + 100, randNum(0, gameHeight)),
+              k.anchor("left"),
+              k.color(255, 255, 255),
+              k.opacity(
+                randNum(warpLineBaseOpacity, warpLineBaseOpacity * 3) / 10
+              ),
+              k.offscreen({ destroy: true }),
+              k.z(Z.stars),
+            ]);
+            warpLine.onUpdate(() => {
+              warpLine.pos.x -= randNum(
+                warpLineBaseSpeed,
+                warpLineBaseSpeed * 2
+              );
+            });
+          });
+
+          // Tween the SPEED setting to make background objects speed up.
+          k.tween(
+            settings.SPEED,
+            settings.SPEED * 10,
+            1,
+            (speed) => {
+              settings.SPEED = speed;
+            },
+            k.easings.easeInCubic
+          );
+
+          // Move the player back on the canvas to prepare for blast off.
+          k.tween(
+            player.pos.x,
+            gameWidth / 5,
+            3,
+            (x) => (player.pos.x = x),
+            k.easings.easeInOutCubic
+          );
+
+          k.wait(2, () => {
+            // Speed the warp lines up
+            k.tween(
+              warpLineBaseSpeed,
+              warpLineBaseSpeed * 5,
+              2,
+              (speed) => {
+                warpLineBaseSpeed = speed;
+              },
+              k.easings.easeInCirc
+            );
+
+            // Shrink the warp line heights
+            k.tween(
+              warpLineHeight,
+              2,
+              3,
+              (height) => {
+                warpLineHeight = height;
+              },
+              k.easings.easeInCirc
+            );
+
+            // Stretch the warp lines
+            k.tween(
+              warpLineBaseWidth,
+              warpLineBaseWidth * 15,
+              2,
+              (width) => {
+                warpLineBaseWidth = width;
+              },
+              k.easings.easeInCirc
+            );
+          });
+
+          // HYPERSPACE
+          k.wait(4.1, () => {
+            // Propel the player forward
+            k.tween(
+              player.pos.x,
+              finalPlayerX + 1000,
+              0.1,
+              (x) => (player.pos.x = x),
+              k.easings.easeInCubic
+            );
+
+            // Angle the player back
+            k.tween(
+              0,
+              -15,
+              0.1,
+              (angle) => {
+                // @ts-ignore
+                player.angle = angle;
+              },
+              k.easings.easeOutCubic
+            );
+
+            // Speed the warp lines up even more!
+            k.tween(
+              warpLineBaseSpeed,
+              warpLineBaseSpeed * 10,
+              0.1,
+              (speed) => {
+                warpLineBaseSpeed = speed;
+              },
+              k.easings.easeInCubic
+            );
+
+            // Shrink the warp line heights even more!
+            k.tween(
+              warpLineHeight,
+              1,
+              0.1,
+              (height) => {
+                warpLineHeight = height;
+              },
+              k.easings.easeInCubic
+            );
+
+            // Stretch the warp lines even more!
+            k.tween(
+              warpLineBaseWidth,
+              warpLineBaseWidth * 2,
+              0.1,
+              (width) => {
+                warpLineBaseWidth = width;
+              },
+              k.easings.easeInCubic
+            );
+
+            // Fade the blocks out
+            k.tween(
+              warpLineBaseOpacity,
+              0,
+              4,
+              (opacity) => {
+                warpLineBaseOpacity = opacity;
+              },
+              k.easings.easeInQuad
+            );
+          });
+
+          // End the game
+          k.wait(9, () => {
+            audioManger.stop("GameBackgroundMusic");
+            k.go("goodEnding");
+          });
+        });
+    }
 
     const transitionToStartGame = () => {
       audioManger.stop("HyperdriveSound");

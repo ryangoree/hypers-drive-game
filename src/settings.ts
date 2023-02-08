@@ -1,5 +1,10 @@
 export interface Settings {
   /**
+   * The game mode.
+   */
+  MODE: 'hyperdrive' | 'flappy'
+
+  /**
    * The force with which the player will be pulled down.
    */
   GRAVITY: number;
