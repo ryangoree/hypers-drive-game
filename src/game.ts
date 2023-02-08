@@ -75,11 +75,11 @@ export function startGame(gameSettings?: Partial<Settings>) {
   const trades = new Trades(k, storage, settings);
 
   // Load fonts
-  k.loadFont("M23", "/m23-r.ttf");
-  k.loadFont("HardDrive", "/hard-drive.ttf");
+  k.loadFont("M23", "./m23-r.ttf");
+  k.loadFont("HardDrive", "./hard-drive.ttf");
 
   // Load sprites
-  k.loadSprite("volume", "/volume.png", {
+  k.loadSprite("volume", "./volume.png", {
     sliceX: 3,
     anims: {
       high: {
@@ -90,7 +90,7 @@ export function startGame(gameSettings?: Partial<Settings>) {
       mute: 2,
     },
   });
-  k.loadSprite("player", "/car-driving.png", {
+  k.loadSprite("player", "./car-driving.png", {
     sliceX: 3,
     anims: {
       drive: {
@@ -101,10 +101,10 @@ export function startGame(gameSettings?: Partial<Settings>) {
       },
     },
   });
-  k.loadSprite("bird", "/bird.png");
-  k.loadSprite("ryanGosling", "/ryan_gosling_drive_movie_ascii_art.png");
-  k.loadSprite("right-arrow", "/right-arrow.png");
-  k.loadSprite("left-arrow", "/left-arrow.png");
+  k.loadSprite("bird", "./bird.png");
+  k.loadSprite("ryanGosling", "./ryan_gosling_drive_movie_ascii_art.png");
+  k.loadSprite("right-arrow", "./right-arrow.png");
+  k.loadSprite("left-arrow", "./left-arrow.png");
 
   // Add volume controls
   const volumeContainer = k.add([

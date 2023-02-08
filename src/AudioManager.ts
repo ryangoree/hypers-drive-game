@@ -25,10 +25,10 @@ export class AudioManager {
     this.SoundToStorage = {};
 
     // Load sounds
-    this.k.loadSound("StartMusic", "/the-perfect-girl-slowed.mp3");
-    this.k.loadSound("JumpSound", "/jump.mp3");
-    this.k.loadSound("HyperdriveSound", "/hyperdrive-sound.mp3");
-    this.k.loadSound("GameBackgroundMusic", "/force-field-14688.mp3");
+    this.k.loadSound("StartMusic", "./the-perfect-girl-slowed.mp3");
+    this.k.loadSound("JumpSound", "./jump.mp3");
+    this.k.loadSound("HyperdriveSound", "./hyperdrive-sound.mp3");
+    this.k.loadSound("GameBackgroundMusic", "./force-field-14688.mp3");
   }
 
   public get audios() {
